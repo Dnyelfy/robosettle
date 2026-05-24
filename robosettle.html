@@ -403,7 +403,6 @@ async function connectKonnex() {
   const btn = document.getElementById('knxBtn');
   btn.innerHTML = '<span class="spin"></span> Connecting...';
   try {
-    // SubWallet injects window.injectedWeb3 for Substrate chains
     if (window.injectedWeb3 && window.injectedWeb3['subwallet-js']) {
       const subwallet = window.injectedWeb3['subwallet-js'];
       const ext = await subwallet.enable('RoboSettle');
@@ -418,26 +417,14 @@ async function connectKonnex() {
         toast('✓ Konnex / SubWallet connected!');
         renderTasks();
       } else {
-        throw new Error('No accounts found');
+        throw new Error('No accounts found in SubWallet');
       }
-    } else if (window.ethereum) {
-      // Fallback: use EVM wallet for Konnex demo
-      await window.ethereum.request({ method:'eth_requestAccounts' });
-      const accounts = await window.ethereum.request({ method:'eth_accounts' });
-      knxAddress = accounts[0];
-      knxConnected = true;
-      const short = knxAddress.slice(0,6)+'...'+knxAddress.slice(-4);
-      btn.innerHTML = '<span class="wallet-dot knx"></span>' + short;
-      btn.classList.add('knx-connected');
-      document.getElementById('knxDot').className = 'wallet-dot knx';
-      toast('✓ Konnex wallet connected!');
-      renderTasks();
     } else {
-      throw new Error('SubWallet not found');
+      throw new Error('SubWallet not found — install from subwallet.app');
     }
   } catch(e) {
     btn.innerHTML = '<span class="wallet-dot off"></span> Konnex / KNX';
-    toast('Install SubWallet for Konnex: subwallet.app');
+    toast(e.message || 'SubWallet connection failed');
   }
 }
 
@@ -610,9 +597,67 @@ function toast(msg) {
   toast._t = setTimeout(()=>t.classList.remove('show'), 3000);
 }
 
+/* ── AUTO RECONNECT ── */
+async function autoReconnect() {
+  if (window.ethereum) {
+    try {
+      const accounts = await window.ethereum.request({ method:'eth_accounts' });
+      if (accounts.length > 0) {
+        arcProvider = new ethers.BrowserProvider(window.ethereum);
+        arcSigner = await arcProvider.getSigner();
+        arcAddress = accounts[0];
+        arcConnected = true;
+        const short = arcAddress.slice(0,6)+'...'+arcAddress.slice(-4);
+        const btn = document.getElementById('arcBtn');
+        btn.innerHTML = '<span class="wallet-dot arc"></span>' + short;
+        btn.classList.add('arc-connected');
+        document.getElementById('arcDot').className = 'wallet-dot arc';
+        renderTasks();
+      }
+    } catch(e) {}
+  }
+  // Konnex: auto reconnect via SubWallet
+  if (window.injectedWeb3 && window.injectedWeb3['subwallet-js']) {
+    try {
+      const ext = await window.injectedWeb3['subwallet-js'].enable('RoboSettle');
+      const accounts = await ext.accounts.get();
+      if (accounts.length > 0) {
+        knxAddress = accounts[0].address;
+        knxConnected = true;
+        const short = knxAddress.slice(0,6)+'...'+knxAddress.slice(-4);
+        const btn = document.getElementById('knxBtn');
+        btn.innerHTML = '<span class="wallet-dot knx"></span>' + short;
+        btn.classList.add('knx-connected');
+        document.getElementById('knxDot').className = 'wallet-dot knx';
+        renderTasks();
+      }
+    } catch(e) {}
+  }
+}
+
+function disconnectArc() {
+  arcConnected = false; arcAddress = ''; arcProvider = null; arcSigner = null;
+  const btn = document.getElementById('arcBtn');
+  btn.innerHTML = '<span class="wallet-dot off"></span> Arc / USDC';
+  btn.classList.remove('arc-connected');
+  document.getElementById('arcDot').className = 'wallet-dot off';
+  renderTasks();
+}
+function disconnectKnx() {
+  knxConnected = false; knxAddress = '';
+  const btn = document.getElementById('knxBtn');
+  btn.innerHTML = '<span class="wallet-dot off"></span> Konnex / KNX';
+  btn.classList.remove('knx-connected');
+  document.getElementById('knxDot').className = 'wallet-dot off';
+}
+
+document.getElementById('arcBtn').onclick = function() { arcConnected ? disconnectArc() : connectArc(); };
+document.getElementById('knxBtn').onclick = function() { knxConnected ? disconnectKnx() : connectKonnex(); };
+
 renderTasks();
 renderHistory();
 updateStats();
+setTimeout(autoReconnect, 600);
 </script>
 </body>
 </html>
